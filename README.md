@@ -5,10 +5,11 @@ A beautiful CLI tool for browsing and analyzing Claude Code conversations stored
 ## Features
 
 - 📁 **Browse Projects** - List all Claude Code projects with session counts, sizes, and last activity
-- 💬 **View Conversations** - Display conversations with syntax highlighting and formatting  
+- 💬 **View Conversations** - Display conversations with syntax highlighting, formatting, and tool usage
 - 🔍 **Search** - Find specific content across all your Claude sessions
-- 📊 **Statistics** - Analyze token usage, costs, and activity patterns
-- 🎨 **Pretty Output** - Colorful, well-formatted terminal output
+- 📊 **Statistics** - Analyze token usage, costs, and activity patterns with beautiful visualizations
+- 📤 **Export** - Save conversations as Markdown files (with optional thinking blocks)
+- 🎨 **Pretty Output** - Colorful, well-formatted terminal output with proper conversation flow
 - ⚡ **Fast** - Built in Rust with efficient JSONL parsing
 
 ## ⚠️ Important: Prevent Conversation Loss
@@ -129,7 +130,27 @@ claude-convo search "serialization format"
 ### View statistics
 
 ```bash
+# View overall stats
+claude-convo stats
+
+# View weekly stats
 claude-convo stats --period week
+
+# View stats for a specific project
+claude-convo stats --project -Users-you-code-project
+```
+
+### Export conversations
+
+```bash
+# Export to Markdown (default filename: session-id.md)
+claude-convo export 0697
+
+# Export with custom filename
+claude-convo export 0697 --output my-conversation.md
+
+# Include thinking blocks in export
+claude-convo export 0697 --include-thinking
 ```
 
 ## Data Location

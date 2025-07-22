@@ -1,0 +1,28 @@
+[package]
+name = "claude-convo"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "CLI tool for browsing and analyzing Claude Code conversations"
+license = "MIT"
+
+[[bin]]
+name = "analyze-format"
+path = "src/bin/analyze_format.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+jiff = { version = "0.2", features = ["serde"] }
+anyhow = "1.0"
+colored = "2.0"
+prettytable-rs = "0.10"
+dirs = "5.0"
+glob = "0.3"
+indicatif = "0.17"
+
+[dev-dependencies]
+tempfile = "3.10"
+assert_cmd = "2.0"
+predicates = "3.1"

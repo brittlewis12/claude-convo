@@ -7,7 +7,9 @@ use jiff::Timestamp;
 
 mod parser;
 mod parser_v2;
+mod bm25;
 mod display;
+mod session_names;
 
 #[derive(Parser)]
 #[command(name = "claude-convo")]
@@ -165,6 +167,7 @@ fn list_sessions(claude_dir: &Path, project: &str) -> Result<()> {
     println!();
     
     let mut sessions = Vec::new();
+    let generator = session_names::SessionNameGenerator::new();
     
     for entry in fs::read_dir(&project_dir)? {
         let entry = entry?;
@@ -181,12 +184,20 @@ fn list_sessions(claude_dir: &Path, project: &str) -> Result<()> {
                     let msg_count = events.len();
                     let preview = get_first_user_message(&events);
                     
+                    // Extract project type from the session file path
+                    let project_type = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("unknown");
+                    
+                    // Generate a memorable name for this session
+                    let session_id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let name = generator.generate(session_id, project_type);
+                    
                     sessions.push((
                         path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string(),
                         first_event.timestamp,
                         msg_count,
                         size,
-                        preview
+                        preview,
+                        name
                     ));
                 }
             }
@@ -196,16 +207,17 @@ fn list_sessions(claude_dir: &Path, project: &str) -> Result<()> {
     // Sort by timestamp (newest first)
     sessions.sort_by(|a, b| b.1.cmp(&a.1));
     
-    for (id, timestamp, msg_count, size, preview) in sessions {
+    for (id, timestamp, msg_count, size, preview, name) in sessions {
         let size_mb = size as f64 / 1_000_000.0;
         let local_time = timestamp.to_zoned(jiff::tz::TimeZone::system());
         let time_str = format!("{}", local_time.strftime("%Y-%m-%d %H:%M"));
         
-        println!("  {} │ {:>4} msgs │ {:>6.1} MB │ {}",
+        println!("  {} │ {:>4} msgs │ {:>6.1} MB │ {} │ {}",
             time_str.bright_white(),
             msg_count,
             size_mb,
-            preview.dimmed()
+            preview.dimmed(),
+            name.bright_cyan()
         );
         println!("  {}", id.dimmed());
         println!();
@@ -291,9 +303,10 @@ fn show_command(session: &str, show_thinking: bool, limit: usize) -> Result<()> 
             return Ok(());
         }
         
-        // Print header
+        // Print header - use the actual session ID from the file
+        let file_id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
         display::print_session_header(
-            session,
+            file_id,
             &events
         );
         
@@ -333,12 +346,35 @@ fn find_session_file(claude_dir: &Path, session_id: &str) -> Result<Option<PathB
         let path = entry.path();
         
         if path.is_dir() {
+            // Try to find by session ID first (as before)
             for file_entry in fs::read_dir(&path)? {
                 let file_entry = file_entry?;
                 let file_path = file_entry.path();
                 
                 if let Some(name) = file_path.file_stem().and_then(|s| s.to_str()) {
                     if name.starts_with(session_id) {
+                        return Ok(Some(file_path));
+                    }
+                }
+            }
+            
+            // If not found by ID, try to find by memorable name
+            // This is a best-effort search that looks for a session with the given name
+            // This could match multiple sessions, so we'll return the first match
+            for file_entry in fs::read_dir(&path)? {
+                let file_entry = file_entry?;
+                let file_path = file_entry.path();
+                
+                if let Some(name) = file_path.file_stem().and_then(|s| s.to_str()) {
+                    // Extract the project type from the path
+                    let project_type = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+                    
+                    // Generate the expected name for this session
+                    let generator = session_names::SessionNameGenerator::new();
+                    let expected_name = generator.generate(name, project_type);
+                    
+                    // Check if the expected name matches the requested name
+                    if expected_name == session_id {
                         return Ok(Some(file_path));
                     }
                 }
@@ -542,14 +578,21 @@ struct SearchMatch {
     timestamp: Timestamp,
     role: String,
     content: String,
+    score: f64,
 }
 
 fn search_in_session(path: &Path, query: &str) -> Result<Vec<SearchMatch>> {
     let events = parser_v2::parse_session_file(path)?;
-    let mut matches = Vec::new();
-    let query_lower = query.to_lowercase();
     
-    for event in events {
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    
+    // Build corpus for BM25
+    let mut documents = Vec::new();
+    let mut event_indices = Vec::new();
+    
+    for (idx, event) in events.iter().enumerate() {
         let mut search_content = event.content.clone();
         
         // Include thinking in search
@@ -563,18 +606,77 @@ fn search_in_session(path: &Path, query: &str) -> Result<Vec<SearchMatch>> {
             search_content.push_str(&format!("\n[Tool: {}]", tool_info.name));
         }
         
-        if search_content.to_lowercase().contains(&query_lower) {
-            // Extract a snippet around the match
-            let snippet = extract_snippet(&search_content, &query_lower, 100);
-            matches.push(SearchMatch {
+        documents.push(search_content);
+        event_indices.push(idx);
+    }
+    
+    // Create BM25 scorer with standard parameters
+    let bm25 = crate::bm25::BM25::new(&documents, 1.2, 0.75);
+    
+    // Score all documents
+    let mut scored_matches = Vec::new();
+    
+    for (doc_idx, (doc, event_idx)) in documents.iter().zip(event_indices.iter()).enumerate() {
+        let score = bm25.score(query, doc);
+        
+        // Only include documents with positive scores
+        if score > 0.0 {
+            let event = &events[*event_idx];
+            // For snippet, try to find the first matching query term
+            let query_words: Vec<&str> = query.split_whitespace().collect();
+            let snippet = extract_snippet_with_words(doc, &query_words, 100);
+            
+            scored_matches.push(SearchMatch {
                 timestamp: event.timestamp,
                 role: event.role.clone(),
                 content: snippet,
+                score,
             });
         }
     }
     
-    Ok(matches)
+    // Sort by score (highest first)
+    scored_matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+    
+    Ok(scored_matches)
+}
+
+fn extract_snippet_with_words(text: &str, query_words: &[&str], context_chars: usize) -> String {
+    let lower_text = text.to_lowercase();
+    
+    // Try to find the first occurrence of any query word
+    let mut best_pos = None;
+    for word in query_words {
+        if let Some(pos) = lower_text.find(&word.to_lowercase()) {
+            if best_pos.is_none() || pos < best_pos.unwrap() {
+                best_pos = Some(pos);
+            }
+        }
+    }
+    
+    if let Some(pos) = best_pos {
+        // Find safe char boundaries
+        let mut start = pos.saturating_sub(context_chars);
+        let mut end = (pos + context_chars).min(text.len());
+        
+        // Adjust to char boundaries
+        while start > 0 && !text.is_char_boundary(start) {
+            start -= 1;
+        }
+        while end < text.len() && !text.is_char_boundary(end) {
+            end += 1;
+        }
+        
+        let snippet = &text[start..end];
+        format!("...{}...", snippet.trim())
+    } else {
+        // No match found, return beginning of text
+        let mut end = context_chars.min(text.len());
+        while end < text.len() && !text.is_char_boundary(end) {
+            end += 1;
+        }
+        format!("{}...", &text[..end].trim())
+    }
 }
 
 fn extract_snippet(text: &str, query: &str, context_chars: usize) -> String {

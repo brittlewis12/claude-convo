@@ -715,10 +715,13 @@ fn highlight_match(text: &str, query: &str) -> String {
     let mut result = text.to_string();
     let lower_text = text.to_lowercase();
     
-    // Split query into words and filter out very short words
+    // Very common words to skip highlighting - kept minimal for search
+    const SKIP_WORDS: &[&str] = &["a", "an", "and", "the", "is", "it", "to", "of", "in", "for"];
+    
+    // Split query into words and filter out common words
     let query_words: Vec<String> = query.split_whitespace()
         .map(|w| w.to_lowercase())
-        .filter(|w| w.len() >= 3)  // Skip very short words like "a", "is", "to"
+        .filter(|w| !SKIP_WORDS.contains(&w.as_str()))
         .collect();
     
     // Track positions we've already highlighted to avoid overlaps

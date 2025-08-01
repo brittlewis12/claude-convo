@@ -746,9 +746,21 @@ fn stats_command(period: &str) -> Result<()> {
     // Calculate period boundaries
     let now = Timestamp::now();
     let period_start = match period {
-        "day" => now.saturating_sub(jiff::Span::new().days(1)).unwrap_or(Timestamp::UNIX_EPOCH),
-        "week" => now.saturating_sub(jiff::Span::new().days(7)).unwrap_or(Timestamp::UNIX_EPOCH),
-        "month" => now.saturating_sub(jiff::Span::new().days(30)).unwrap_or(Timestamp::UNIX_EPOCH),
+        "day" => {
+            let now_zoned = now.to_zoned(jiff::tz::TimeZone::system());
+            let day_ago_zoned = now_zoned.checked_sub(jiff::Span::new().days(1)).unwrap_or(now_zoned);
+            day_ago_zoned.timestamp()
+        },
+        "week" => {
+            let now_zoned = now.to_zoned(jiff::tz::TimeZone::system());
+            let week_ago_zoned = now_zoned.checked_sub(jiff::Span::new().days(7)).unwrap_or(now_zoned);
+            week_ago_zoned.timestamp()
+        },
+        "month" => {
+            let now_zoned = now.to_zoned(jiff::tz::TimeZone::system());
+            let month_ago_zoned = now_zoned.checked_sub(jiff::Span::new().days(30)).unwrap_or(now_zoned);
+            month_ago_zoned.timestamp()
+        },
         "all" => Timestamp::UNIX_EPOCH,
         _ => {
             println!("{}", "Invalid period. Use: day, week, month, or all".red());
@@ -789,7 +801,12 @@ fn stats_command(period: &str) -> Result<()> {
                         }
                         
                         total_sessions += 1;
-                        total_messages += events.len();
+                        
+                        // Only count messages within the period
+                        let messages_in_period = events.iter()
+                            .filter(|e| e.timestamp >= period_start)
+                            .count();
+                        total_messages += messages_in_period;
                         
                         // Calculate session duration
                         if events.len() > 1 {
@@ -806,6 +823,11 @@ fn stats_command(period: &str) -> Result<()> {
                         
                         // Process each event
                         for event in &events {
+                            // Skip events outside the period
+                            if event.timestamp < period_start {
+                                continue;
+                            }
+                            
                             if event.role == "assistant" {
                                 // Count tokens
                                 if let Some(usage) = &event.usage {

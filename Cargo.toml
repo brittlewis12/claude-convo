@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Your Name <you@example.com>"]
 description = "CLI tool for browsing and analyzing Claude Code conversations"
 license = "MIT"
+default-run = "claude-convo"
 
 [[bin]]
 name = "analyze-format"

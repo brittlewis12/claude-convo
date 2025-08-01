@@ -70,6 +70,10 @@ enum Commands {
         /// Include thinking blocks
         #[arg(long)]
         include_thinking: bool,
+
+        /// Include tool usage
+        #[arg(long)]
+        include_tools: bool,
     },
 }
 
@@ -89,8 +93,8 @@ fn main() -> Result<()> {
         Commands::Stats { period } => {
             stats_command(&period)?;
         }
-        Commands::Export { session, output, include_thinking } => {
-            export_command(&session, output, include_thinking)?;
+        Commands::Export { session, output, include_thinking, include_tools } => {
+            export_command(&session, output, include_thinking, include_tools)?;
         }
     }
     
@@ -964,7 +968,7 @@ fn format_number(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-fn export_command(session: &str, output: Option<String>, include_thinking: bool) -> Result<()> {
+fn export_command(session: &str, output: Option<String>, include_thinking: bool, include_tools: bool) -> Result<()> {
     let claude_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?
         .join(".claude/projects");
@@ -1064,13 +1068,15 @@ fn export_command(session: &str, output: Option<String>, include_thinking: bool)
                     }
                     
                     // Add tool use
-                    if let Some(tool_info) = &event.tool_info {
-                        content.push_str(&format!("### Tool: {}\n\n", tool_info.name));
-                        content.push_str("```json\n");
-                        if let Ok(pretty) = serde_json::to_string_pretty(&tool_info.input) {
-                            content.push_str(&pretty);
+                    if include_tools {
+                        if let Some(tool_info) = &event.tool_info {
+                            content.push_str(&format!("### Tool: {}\n\n", tool_info.name));
+                            content.push_str("```json\n");
+                            if let Ok(pretty) = serde_json::to_string_pretty(&tool_info.input) {
+                                content.push_str(&pretty);
+                            }
+                            content.push_str("\n```\n\n");
                         }
-                        content.push_str("\n```\n\n");
                     }
                     
                     // Add token usage if available

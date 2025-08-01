@@ -712,29 +712,69 @@ fn extract_snippet(text: &str, query: &str, context_chars: usize) -> String {
 }
 
 fn highlight_match(text: &str, query: &str) -> String {
+    let mut result = text.to_string();
     let lower_text = text.to_lowercase();
-    let lower_query = query.to_lowercase();
     
-    if let Some(byte_pos) = lower_text.find(&lower_query) {
-        // Find char boundaries for safe slicing
-        let mut start = byte_pos;
-        while start > 0 && !text.is_char_boundary(start) {
-            start -= 1;
+    // Split query into words and filter out very short words
+    let query_words: Vec<String> = query.split_whitespace()
+        .map(|w| w.to_lowercase())
+        .filter(|w| w.len() >= 3)  // Skip very short words like "a", "is", "to"
+        .collect();
+    
+    // Track positions we've already highlighted to avoid overlaps
+    let mut highlighted_ranges: Vec<(usize, usize)> = Vec::new();
+    
+    for word in &query_words {
+        let mut search_pos = 0;
+        while let Some(rel_pos) = lower_text[search_pos..].find(word) {
+            let byte_pos = search_pos + rel_pos;
+            
+            // Check for word boundaries (don't highlight partial matches)
+            let at_word_start = byte_pos == 0 || 
+                lower_text.chars().nth(byte_pos.saturating_sub(1))
+                    .map(|c| !c.is_alphanumeric()).unwrap_or(true);
+            let at_word_end = byte_pos + word.len() >= lower_text.len() ||
+                lower_text.chars().nth(byte_pos + word.len())
+                    .map(|c| !c.is_alphanumeric()).unwrap_or(true);
+            
+            if at_word_start && at_word_end {
+                // Check if this position overlaps with already highlighted text
+                let overlaps = highlighted_ranges.iter()
+                    .any(|(start, end)| byte_pos < *end && byte_pos + word.len() > *start);
+                
+                if !overlaps {
+                    // Find char boundaries for safe slicing
+                    let mut start = byte_pos;
+                    while start > 0 && !text.is_char_boundary(start) {
+                        start -= 1;
+                    }
+                    
+                    let mut end = byte_pos + word.len();
+                    while end < text.len() && !text.is_char_boundary(end) {
+                        end += 1;
+                    }
+                    
+                    highlighted_ranges.push((start, end));
+                }
+            }
+            
+            search_pos = byte_pos + 1;  // Move forward by 1 to find all occurrences
         }
-        
-        let mut end = byte_pos + query.len();
-        while end < text.len() && !text.is_char_boundary(end) {
-            end += 1;
-        }
-        
-        let before = &text[..start];
-        let matched = &text[start..end];
-        let after = &text[end..];
-        
-        format!("{}{}{}", before, matched.on_yellow().black(), after)
-    } else {
-        text.to_string()
     }
+    
+    // Sort ranges by start position (descending) to apply highlights from end to start
+    highlighted_ranges.sort_by(|a, b| b.0.cmp(&a.0));
+    
+    // Apply highlights
+    for (start, end) in highlighted_ranges {
+        let before = &result[..start];
+        let matched = &result[start..end];
+        let after = &result[end..];
+        
+        result = format!("{}{}{}", before, matched.on_yellow().black(), after);
+    }
+    
+    result
 }
 
 fn stats_command(period: &str) -> Result<()> {

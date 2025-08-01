@@ -733,12 +733,18 @@ fn highlight_match(text: &str, query: &str) -> String {
             let byte_pos = search_pos + rel_pos;
             
             // Check for word boundaries (don't highlight partial matches)
-            let at_word_start = byte_pos == 0 || 
-                lower_text.chars().nth(byte_pos.saturating_sub(1))
-                    .map(|c| !c.is_alphanumeric()).unwrap_or(true);
-            let at_word_end = byte_pos + word.len() >= lower_text.len() ||
-                lower_text.chars().nth(byte_pos + word.len())
-                    .map(|c| !c.is_alphanumeric()).unwrap_or(true);
+            let at_word_start = byte_pos == 0 || {
+                // Get the character before this position
+                let before = &lower_text[..byte_pos];
+                before.chars().last()
+                    .map(|c| !c.is_alphanumeric()).unwrap_or(true)
+            };
+            let at_word_end = byte_pos + word.len() >= lower_text.len() || {
+                // Get the character after this position
+                let after_pos = byte_pos + word.len();
+                lower_text[after_pos..].chars().next()
+                    .map(|c| !c.is_alphanumeric()).unwrap_or(true)
+            };
             
             if at_word_start && at_word_end {
                 // Check if this position overlaps with already highlighted text

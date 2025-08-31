@@ -6,11 +6,13 @@ A beautiful CLI tool for browsing and analyzing Claude Code conversations stored
 
 - 📁 **Browse Projects** - List all Claude Code projects with session counts, sizes, and last activity
 - 💬 **View Conversations** - Display conversations with syntax highlighting, formatting, and tool usage
-- 🔍 **Search** - Find specific content across all your Claude sessions
+- 🔍 **Search** - Find specific content across all your Claude sessions with BM25 ranking
 - 📊 **Statistics** - Analyze token usage, costs, and activity patterns with beautiful visualizations
 - 📤 **Export** - Save conversations as Markdown files (with optional thinking blocks)
 - 🎨 **Pretty Output** - Colorful, well-formatted terminal output with proper conversation flow
 - ⚡ **Fast** - Built in Rust with efficient JSONL parsing
+- 🏷️ **Session Names** - Memorable word-pair names for easy session identification
+- 📄 **Automatic Paging** - Large outputs automatically use your system's pager
 
 ## ⚠️ Important: Prevent Conversation Loss
 
@@ -30,19 +32,17 @@ See [Claude Code settings documentation](https://docs.anthropic.com/en/docs/clau
 
 ## Installation
 
-### From Source
-
 ```bash
-git clone https://github.com/yourusername/claude-convo
+git clone https://github.com/brittlewis12/claude-convo
 cd claude-convo
-cargo build --release
-cp target/release/claude-convo ~/.local/bin/
+mise install  # installs correct Rust version
+cargo install --path .
 ```
 
 ### Prerequisites
 
-- Rust 1.70+ (install from [rustup.rs](https://rustup.rs))
-- Claude Code conversations in `~/.claude/projects/`
+- **Rust** - Install via [rustup.rs](https://rustup.rs) or [mise](https://mise.jdx.dev/)
+- **Claude Code** conversations in `~/.claude/projects/`
 
 ## Usage
 
@@ -71,30 +71,36 @@ Output:
 ```
 Sessions in -Users-tito-code-opencode:
 
-  2025-07-22 00:49 │  226 msgs │    0.6 MB │ "im really interested in the claude..."
+  2025-07-22 00:49 │ nebula-quasar │  226 msgs │    0.6 MB │ "im really interested in the claude..."
   0697fd58-7182-4faa-91b4-c76dded9374b
 
-  2025-07-21 20:02 │  488 msgs │    1.0 MB │ "amazing!!! so qwen just released an..."
+  2025-07-21 20:02 │ galaxy-meteor │  488 msgs │    1.0 MB │ "amazing!!! so qwen just released an..."
   7715c7ce-489f-4c5d-b3d3-1d787f9232ff
 ```
 
 ### View a conversation
 
 ```bash
-# Show first 50 messages (default)
+# Show all messages (default: includes thinking & tools, with automatic paging)
 claude-convo show 0697
 
-# Show all messages  
-claude-convo show 0697 --limit 0
+# Show first 50 messages  
+claude-convo show 0697 --limit 50
 
-# Show thinking blocks
-claude-convo show 0697 --show-thinking
+# Hide thinking blocks
+claude-convo show 0697 --no-thinking
+
+# Hide tool usage
+claude-convo show 0697 --no-tools
+
+# Show by memorable name
+claude-convo show nebula-quasar
 ```
 
 Output:
 ```
 ┌─ Session ─────────────────────────────────────────────────┐
-│ ID: 0697                                                   │
+│ ID: 0697fd58 (nebula-quasar)                             │
 │ Started: 2025-07-21 20:49:44 EDT                         │
 │ Duration: 47m 51s                                          │
 │ Messages: 381                                              │
@@ -124,7 +130,14 @@ I'll dive deep into Claude Code's conversation serialization format...
 ### Search conversations
 
 ```bash
+# Search with BM25 relevance ranking (auto-pages in terminal)
 claude-convo search "serialization format"
+
+# Limit results (outputs to scrollback, no pager)
+claude-convo search "bm25 algorithm" --limit 10
+
+# Search within a specific project
+claude-convo search "error" --project myproject
 ```
 
 ### View statistics
@@ -143,14 +156,17 @@ claude-convo stats --project -Users-you-code-project
 ### Export conversations
 
 ```bash
-# Export to Markdown (default filename: session-id.md)
+# Export to Markdown (default: includes thinking & tools)
 claude-convo export 0697
 
 # Export with custom filename
 claude-convo export 0697 --output my-conversation.md
 
-# Include thinking blocks in export
-claude-convo export 0697 --include-thinking
+# Hide thinking blocks in export
+claude-convo export 0697 --no-thinking
+
+# Hide tool usage in export
+claude-convo export 0697 --no-tools
 ```
 
 ## Data Location
@@ -174,14 +190,17 @@ Built with:
 - **Clap** - Robust CLI argument parsing  
 - **Serde** - Efficient JSON deserialization
 - **Colored** - Beautiful terminal colors
+- **Pager** - Automatic paging for large outputs
+- **Glob** - File pattern matching
 
 ## Roadmap
 
-- [ ] Full-text search implementation
-- [ ] Export to Markdown/JSON
-- [ ] Cost analysis and budgeting
+- [x] Full-text search with BM25 ranking
+- [x] Export to Markdown  
+- [x] Cost analysis in stats
+- [x] Session naming system
+- [x] Automatic pager support
 - [ ] TUI mode for interactive browsing
-- [ ] Session comparison/diff view
 - [ ] Integration with `claude --continue`
 
 ## Contributing
@@ -195,6 +214,10 @@ MIT License - see LICENSE file for details
 ## Acknowledgments
 
 Built to scratch my own itch for better Claude Code conversation management. Inspired by the need to understand how Claude Code serializes our conversations!
+
+### Session Names*
+
+*The deterministic session naming system generates memorable names like "ancient-golden-dragon" from session IDs. With 600 adjectives × 600 adjectives × 1400 nouns = 504M possible combinations, you can expect ~46,000 unique sessions before hitting your first collision (1.6x better than the birthday paradox prediction!). If you somehow manage to hit this limit... reach out, I'd love to hear about your prolific Claude usage! 😄
 
 ## Author's Note
 

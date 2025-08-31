@@ -17,11 +17,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 jiff = { version = "0.2", features = ["serde"] }
 anyhow = "1.0"
-colored = "2.0"
+colored = "3.0"
 prettytable-rs = "0.10"
-dirs = "5.0"
+dirs = "6.0"
 glob = "0.3"
-indicatif = "0.17"
+indicatif = "0.18"
+pager = "0.16"
+names = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.10"

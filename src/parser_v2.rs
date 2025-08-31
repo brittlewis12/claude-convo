@@ -1,10 +1,10 @@
-use serde::{Deserialize};
+use anyhow::Result;
+use jiff::Timestamp;
+use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use jiff::Timestamp;
-use anyhow::Result;
 
 // Top-level enum for all JSONL entry types
 #[derive(Debug, Deserialize)]
@@ -94,11 +94,11 @@ pub enum UserContent {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UserContentBlock {
-    Text { 
-        text: String 
+    Text {
+        text: String,
     },
-    Image { 
-        source: ImageSource 
+    Image {
+        source: ImageSource,
     },
     ToolResult {
         tool_use_id: String,
@@ -132,10 +132,10 @@ pub struct AssistantMessage {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContentBlock {
-    Text { 
-        text: String 
+    Text {
+        text: String,
     },
-    Thinking { 
+    Thinking {
         thinking: String,
         signature: String,
     },
@@ -239,7 +239,7 @@ pub fn parse_session_file(path: &Path) -> Result<Vec<DisplayEvent>> {
         if line.trim().is_empty() {
             continue;
         }
-        
+
         match serde_json::from_str::<SessionEntry>(&line) {
             Ok(entry) => {
                 if let Some(event) = convert_to_display_event(entry) {
@@ -260,18 +260,17 @@ fn convert_to_display_event(entry: SessionEntry) -> Option<DisplayEvent> {
         SessionEntry::User { event } => {
             let content = match &event.message.content {
                 UserContent::Text(text) => text.clone(),
-                UserContent::Blocks(blocks) => {
-                    blocks.iter()
-                        .filter_map(|block| match block {
-                            UserContentBlock::Text { text } => Some(text.clone()),
-                            UserContentBlock::ToolResult { content, .. } => Some(content.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                }
+                UserContent::Blocks(blocks) => blocks
+                    .iter()
+                    .filter_map(|block| match block {
+                        UserContentBlock::Text { text } => Some(text.clone()),
+                        UserContentBlock::ToolResult { content, .. } => Some(content.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             };
-            
+
             Some(DisplayEvent {
                 timestamp: event.metadata.timestamp,
                 role: "user".to_string(),
@@ -286,7 +285,7 @@ fn convert_to_display_event(entry: SessionEntry) -> Option<DisplayEvent> {
             let mut content = String::new();
             let mut tool_info = None;
             let mut thinking = None;
-            
+
             for block in &event.message.content {
                 match block {
                     AssistantContentBlock::Text { text } => {
@@ -307,7 +306,7 @@ fn convert_to_display_event(entry: SessionEntry) -> Option<DisplayEvent> {
                     }
                 }
             }
-            
+
             Some(DisplayEvent {
                 timestamp: event.metadata.timestamp,
                 role: "assistant".to_string(),
@@ -318,17 +317,19 @@ fn convert_to_display_event(entry: SessionEntry) -> Option<DisplayEvent> {
                 model: Some(event.message.model),
             })
         }
-        SessionEntry::System { content, level, metadata } => {
-            Some(DisplayEvent {
-                timestamp: metadata.timestamp,
-                role: format!("system:{}", level.as_deref().unwrap_or("info")),
-                content,
-                tool_info: None,
-                thinking: None,
-                usage: None,
-                model: None,
-            })
-        }
+        SessionEntry::System {
+            content,
+            level,
+            metadata,
+        } => Some(DisplayEvent {
+            timestamp: metadata.timestamp,
+            role: format!("system:{}", level.as_deref().unwrap_or("info")),
+            content,
+            tool_info: None,
+            thinking: None,
+            usage: None,
+            model: None,
+        }),
         SessionEntry::Summary { .. } => {
             // Skip summary entries for display
             None
